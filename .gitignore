@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.env
+
+Plaintext
+# --- AI Research Agent Specific ---
+*.pdf
+temp_image.jpg
