@@ -2,8 +2,9 @@ import requests
 
 class ResearchAgent:
     def __init__(self, name="Agent-Alpha"):
+        # Ορίζουμε το όνομα του Agent
         self.name = name
-        # Headers απαραίτητα για το Wikipedia API
+        # Τα headers χρειάζονται για να μας επιτρέψει η Wikipedia να πάρουμε δεδομένα
         self.headers = {
             "User-Agent": "MyAIResearchAgent/1.0 (contact@example.com)"
         }
@@ -11,23 +12,26 @@ class ResearchAgent:
 
     def search_topic(self, topic):
         """
-        Εργαλείο 1: Αναζήτηση και λήψη περίληψης από το REST API της Wikipedia
+        Εργαλείο 1: Αναζήτηση στη Wikipedia
         """
         print(f"\n🔍 Agent is researching topic: '{topic}'...")
         
-        # URL για το REST API της Wikipedia
+        # Κατασκευάζουμε το URL για το API της Wikipedia με βάση το θέμα
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
         
         try:
+            # Στέλνουμε το αίτημα στο ίντερνετ (HTTP GET request)
             response = requests.get(url, headers=self.headers)
             
-            if response.status_status_code == 404 if hasattr(response, 'status_status_code') else response.status_code == 404:
+            # Αν το θέμα δεν υπάρχει στη Wikipedia (σφάλμα 404)
+            if response.status_code == 404:
                 print(f"❌ Article for '{topic}' not found.")
                 return None
                 
-            response.raise_for_status()
+            # Μετατρέπουμε την απάντηση από τη Wikipedia σε μορφή λεξικού (JSON -> Python dict)
             data = response.json()
             
+            # Επιστρέφουμε τα στοιχεία που μας ενδιαφέρουν
             research_data = {
                 "title": data.get("title", topic),
                 "summary": data.get("extract", "No summary available."),
@@ -41,12 +45,13 @@ class ResearchAgent:
 
     def create_markdown_report(self, research_data, filename="research_report.md"):
         """
-        Εργαλείο 2: Αυτόματη δημιουργία Markdown Report
+        Εργαλείο 2: Δημιουργία αρχείου Markdown
         """
         if not research_data:
             print("❌ Cannot generate report. No research data available.")
             return
 
+        # Φτιάχνουμε το κείμενο του Report
         report_content = f"""# 📑 Research Report: {research_data['title']}
 
 *Generated automatically by {self.name}*
@@ -62,6 +67,7 @@ class ResearchAgent:
 - [Read full article on Wikipedia]({research_data['url']})
 """
 
+        # Ανοίγουμε/Δημιουργούμε το αρχείο και γράφουμε το κείμενο μέσα
         with open(filename, "w", encoding="utf-8") as f:
             f.write(report_content)
 
@@ -70,16 +76,17 @@ class ResearchAgent:
 if __name__ == "__main__":
     agent = ResearchAgent("Agent-Alpha")
     
-    # Θέμα έρευνας
-    topic = "Nvidia"
+    # 🌟 ΝΕΑ ΔΥΝΑΤΟΤΗΤΑ: Ο χρήστης πληκτρολογεί όποιο θέμα θέλει!
+    user_topic = input("\n👉 Enter a research topic (e.g., Quantum_computing, Artificial_intelligence, Apple_Inc): ").strip()
     
-    # 1. Αναζήτηση
-    data = agent.search_topic(topic)
-    
-    if data:
-        print("\n--- Research Results ---")
-        print(f"Title: {data['title']}")
-        print(f"\nSummary:\n{data['summary']}\n")
+    if user_topic:
+        # 1. Εκτέλεση εργαλείου αναζήτησης
+        data = agent.search_topic(user_topic)
         
-        # 2. Δημιουργία Report
-        agent.create_markdown_report(data)
+        if data:
+            print("\n--- Research Results ---")
+            print(f"Title: {data['title']}")
+            print(f"\nSummary:\n{data['summary']}\n")
+            
+            # 2. Εκτέλεση εργαλείου δημιουργίας report
+            agent.create_markdown_report(data)
