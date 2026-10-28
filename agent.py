@@ -1,92 +1,163 @@
 import requests
+from fpdf import FPDF
 
 class ResearchAgent:
     def __init__(self, name="Agent-Alpha"):
-        # Ορίζουμε το όνομα του Agent
         self.name = name
-        # Τα headers χρειάζονται για να μας επιτρέψει η Wikipedia να πάρουμε δεδομένα
         self.headers = {
             "User-Agent": "MyAIResearchAgent/1.0 (contact@example.com)"
         }
         print(f"🤖 {self.name} initialized and ready for research!")
 
-    def search_topic(self, topic):
+    def clean_text(self, text):
         """
-        Εργαλείο 1: Αναζήτηση στη Wikipedia
+        Καθαρίζει ειδικούς χαρακτήρες (παύλες, εισαγωγικά, αλλαγές γραμμών)
+        ώστε να εμφανίζονται σωστά στο PDF χωρίς '?' ή παράξενα σπασίματα.
         """
-        print(f"\n🔍 Agent is researching topic: '{topic}'...")
+        if not text:
+            return ""
         
-        # Κατασκευάζουμε το URL για το API της Wikipedia με βάση το θέμα
-        url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
+        replacements = {
+            "—": " - ",
+            "–": " - ",
+            "“": '"',
+            "”": '"',
+            "’": "'",
+            "‘": "'",
+            "\n": " "
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+            
+        return text.encode('latin-1', 'ignore').decode('latin-1')
+
+    def fetch_wikipedia_data(self, topic):
+        clean_topic = topic.replace("_", " ").strip()
+        print(f"\n📚 [Source 1/2] Fetching Wikipedia overview for '{clean_topic}'...")
+        url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{clean_topic}"
         
         try:
-            # Στέλνουμε το αίτημα στο ίντερνετ (HTTP GET request)
             response = requests.get(url, headers=self.headers)
-            
-            # Αν το θέμα δεν υπάρχει στη Wikipedia (σφάλμα 404)
             if response.status_code == 404:
-                print(f"❌ Article for '{topic}' not found.")
                 return None
-                
-            # Μετατρέπουμε την απάντηση από τη Wikipedia σε μορφή λεξικού (JSON -> Python dict)
+            response.raise_for_status()
             data = response.json()
             
-            # Επιστρέφουμε τα στοιχεία που μας ενδιαφέρουν
-            research_data = {
-                "title": data.get("title", topic),
+            return {
+                "title": data.get("title", clean_topic),
                 "summary": data.get("extract", "No summary available."),
-                "url": data.get("content_urls", {}).get("desktop", {}).get("page", f"https://en.wikipedia.org/wiki/{topic}")
+                "url": data.get("content_urls", {}).get("desktop", {}).get("page", "")
             }
-            return research_data
-
         except Exception as e:
-            print(f"❌ Error fetching data: {e}")
+            print(f"⚠️ Wikipedia search error: {e}")
             return None
 
-    def create_markdown_report(self, research_data, filename="research_report.md"):
-        """
-        Εργαλείο 2: Δημιουργία αρχείου Markdown
-        """
-        if not research_data:
-            print("❌ Cannot generate report. No research data available.")
-            return
+    def fetch_news_data(self, topic):
+        clean_topic = topic.replace("_", " ").strip()
+        print(f"📰 [Source 2/2] Fetching related web topics for '{clean_topic}'...")
+        url = f"https://api.duckduckgo.com/?q={clean_topic}&format=json"
+        
+        try:
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+            data = response.json()
+            
+            related_topics = []
+            for item in data.get("RelatedTopics", []):
+                if "Text" in item and len(related_topics) < 3:
+                    related_topics.append(item["Text"])
+                    
+            return related_topics
+        except Exception as e:
+            print(f"⚠️ News search error: {e}")
+            return []
 
-        # Φτιάχνουμε το κείμενο του Report
-        report_content = f"""# 📑 Research Report: {research_data['title']}
-
-*Generated automatically by {self.name}*
+    def create_markdown_report(self, title, summary, url, related_topics, filename="research_report.md"):
+        report_content = f"""# Research Report: {title}
 
 ---
 
-## 📌 Executive Summary
-{research_data['summary']}
+## Executive Summary
+{summary}
 
 ---
 
-## 🔗 Source & References
-- [Read full article on Wikipedia]({research_data['url']})
+## Related Key Insights
 """
+        if related_topics:
+            for item in related_topics:
+                report_content += f"- {item}\n"
+        else:
+            report_content += "No additional web insights found.\n"
 
-        # Ανοίγουμε/Δημιουργούμε το αρχείο και γράφουμε το κείμενο μέσα
+        report_content += f"\n---\n\n## References\n- [Read full article on Wikipedia]({url})\n"
+
         with open(filename, "w", encoding="utf-8") as f:
             f.write(report_content)
 
-        print(f"✅ Report successfully saved to '{filename}'!")
+        print(f"✅ Markdown report saved to '{filename}'!")
+
+    def create_pdf_report(self, title, summary, related_topics, filename="research_report.pdf"):
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        
+        # Χρήση pdf.epw (Effective Page Width) για να μην υπάρχει ποτέ σφάλμα χώρου
+        page_width = pdf.epw 
+
+        # Τίτλος (Helvetica Sans-Serif όπως η Wikipedia)
+        pdf.set_font("Helvetica", style="B", size=16)
+        pdf.cell(page_width, 10, f"Research Report: {self.clean_text(title)}", new_x="LMARGIN", new_y="NEXT", align="L")
+        pdf.ln(5)
+
+        # 1. Executive Summary
+        pdf.set_font("Helvetica", style="B", size=12)
+        pdf.cell(page_width, 8, "1. Executive Summary", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+        
+        pdf.set_font("Helvetica", size=10)
+        clean_sum = self.clean_text(summary)
+        pdf.multi_cell(page_width, 6, clean_sum)
+        pdf.ln(6)
+
+        # 2. Related Key Insights
+        pdf.set_font("Helvetica", style="B", size=12)
+        pdf.cell(page_width, 8, "2. Related Key Insights", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+        
+        pdf.set_font("Helvetica", size=10)
+        if related_topics:
+            for item in related_topics:
+                clean_item = self.clean_text(item)
+                pdf.multi_cell(page_width, 6, f"- {clean_item}")
+                pdf.ln(2)
+        else:
+            pdf.multi_cell(page_width, 6, "No additional web insights found.")
+
+        pdf.output(filename)
+        print(f"📄 PDF report successfully created: '{filename}'!")
 
 if __name__ == "__main__":
     agent = ResearchAgent("Agent-Alpha")
     
-    # 🌟 ΝΕΑ ΔΥΝΑΤΟΤΗΤΑ: Ο χρήστης πληκτρολογεί όποιο θέμα θέλει!
-    user_topic = input("\n👉 Enter a research topic (e.g., Quantum_computing, Artificial_intelligence, Apple_Inc): ").strip()
+    user_topic = input("\n👉 Enter a research topic (e.g., Global warming, Artificial intelligence, Apple Inc): ").strip()
     
     if user_topic:
-        # 1. Εκτέλεση εργαλείου αναζήτησης
-        data = agent.search_topic(user_topic)
+        wiki_data = agent.fetch_wikipedia_data(user_topic)
+        news_data = agent.fetch_news_data(user_topic)
         
-        if data:
-            print("\n--- Research Results ---")
-            print(f"Title: {data['title']}")
-            print(f"\nSummary:\n{data['summary']}\n")
+        if wiki_data:
+            agent.create_markdown_report(
+                title=wiki_data['title'],
+                summary=wiki_data['summary'],
+                url=wiki_data['url'],
+                related_topics=news_data
+            )
             
-            # 2. Εκτέλεση εργαλείου δημιουργίας report
-            agent.create_markdown_report(data)
+            agent.create_pdf_report(
+                title=wiki_data['title'],
+                summary=wiki_data['summary'],
+                related_topics=news_data
+            )
+        else:
+            print("❌ Research failed: Could not find sufficient data for this topic.")
